@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgres:16
+    container_name: p2p-postgres
+    environment:
+      POSTGRES_DB: p2plending
+      POSTGRES_USER: p2p
+      POSTGRES_PASSWORD: p2p
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U p2p -d p2plending"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:
