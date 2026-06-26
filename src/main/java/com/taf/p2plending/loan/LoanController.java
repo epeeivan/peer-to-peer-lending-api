@@ -1,5 +1,6 @@
 package com.taf.p2plending.loan;
 
+import com.taf.p2plending.loan.dto.FundLoanRequest;
 import com.taf.p2plending.loan.dto.LoanResponse;
 import com.taf.p2plending.loan.dto.RequestLoanRequest;
 import jakarta.validation.Valid;
@@ -25,6 +26,11 @@ public class LoanController {
     @PostMapping
     public ResponseEntity<LoanResponse> request(@Valid @RequestBody RequestLoanRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(loanService.requestLoan(request));
+    }
+
+    @PostMapping("/{id}/fund")
+    public LoanResponse fund(@PathVariable Long id, @Valid @RequestBody FundLoanRequest request) {
+        return loanService.fundLoan(id, request);
     }
 
     @GetMapping("/{id}")
