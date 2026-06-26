@@ -62,6 +62,7 @@ rolls back every wallet update), the financial math, and the HTTP status codes.
 | GET  | `/api/loans/{id}` | Get a loan's details |
 | POST | `/api/loans/{id}/fund` | Fund a `PENDING` loan; auto-disburses when fully funded |
 | POST | `/api/loans/{id}/repay` | Make a monthly repayment (distributes to investors) |
+| POST | `/api/loans/{id}/cancel` | Cancel a `PENDING` loan (refunds investors from escrow) |
 
 Example request to create a loan:
 ```bash
@@ -92,9 +93,9 @@ curl -X POST http://localhost:8080/api/loans \
   investors with a **largest-remainder** rule so the parts always sum exactly to the distributable
   amount.
 - **Funding window**: loans have a **14-day** funding deadline (configurable via
-  `p2p.funding.window-days`); funding after the deadline is rejected. *Automatic expiry-and-refund
-  and a borrower cancel endpoint are designed around the escrow refund path but are not part of this
-  submission.*
+  `p2p.funding.window-days`); funding after the deadline is rejected. An hourly scheduled job
+  cancels expired `PENDING` loans and refunds their investors from escrow; a borrower can also
+  cancel a `PENDING` loan via `POST /api/loans/{id}/cancel` (never after disbursement).
 
 ## Database schema
 
