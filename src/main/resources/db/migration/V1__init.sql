@@ -1,10 +1,13 @@
 CREATE TABLE users (
-    id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    name       VARCHAR(150) NOT NULL,
-    email      VARCHAR(255) NOT NULL UNIQUE,
-    is_system  BOOLEAN      NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMPTZ  NOT NULL DEFAULT now()
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    name        VARCHAR(150) NOT NULL,
+    email       VARCHAR(255) NOT NULL UNIQUE,
+    system_role VARCHAR(20),
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT chk_user_system_role CHECK (system_role IS NULL OR system_role IN ('PLATFORM', 'ESCROW'))
 );
+
+CREATE UNIQUE INDEX uq_users_system_role ON users(system_role) WHERE system_role IS NOT NULL;
 
 CREATE TABLE wallets (
     id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

@@ -1,6 +1,6 @@
-INSERT INTO users (name, email, is_system) VALUES
-    ('Platform Account', 'platform@system.local', TRUE),
-    ('Escrow Account',   'escrow@system.local',   TRUE);
+INSERT INTO users (name, email, system_role) VALUES
+    ('Platform Account', 'platform@system.local', 'PLATFORM'),
+    ('Escrow Account',   'escrow@system.local',   'ESCROW');
 
 INSERT INTO wallets (user_id)
-SELECT id FROM users WHERE email IN ('platform@system.local', 'escrow@system.local');
+SELECT id FROM users WHERE system_role IS NOT NULL;

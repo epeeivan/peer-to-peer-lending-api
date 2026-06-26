@@ -2,6 +2,8 @@ package com.taf.p2plending.user;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -24,8 +26,9 @@ public class User {
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(name = "is_system", nullable = false)
-    private boolean system;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "system_role", length = 20)
+    private SystemRole systemRole;
 
     @Generated(event = EventType.INSERT)
     @Column(name = "created_at", insertable = false, updatable = false)
@@ -59,12 +62,12 @@ public class User {
         this.email = email;
     }
 
-    public boolean isSystem() {
-        return system;
+    public SystemRole getSystemRole() {
+        return systemRole;
     }
 
-    public void setSystem(boolean system) {
-        this.system = system;
+    public boolean isSystem() {
+        return systemRole != null;
     }
 
     public OffsetDateTime getCreatedAt() {
