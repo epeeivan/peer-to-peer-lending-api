@@ -111,6 +111,10 @@ public class Loan {
         return fundingDeadline;
     }
 
+    public void setFundingDeadline(OffsetDateTime fundingDeadline) {
+        this.fundingDeadline = fundingDeadline;
+    }
+
     public void setFundedAmount(BigDecimal fundedAmount) {
         this.fundedAmount = fundedAmount;
     }

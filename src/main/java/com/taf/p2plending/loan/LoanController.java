@@ -41,6 +41,11 @@ public class LoanController {
         return repaymentService.repay(id);
     }
 
+    @PostMapping("/{id}/cancel")
+    public LoanResponse cancel(@PathVariable Long id) {
+        return loanService.cancelLoan(id);
+    }
+
     @GetMapping("/{id}")
     public LoanResponse get(@PathVariable Long id) {
         return loanService.getLoan(id);
