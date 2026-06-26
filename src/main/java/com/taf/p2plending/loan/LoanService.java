@@ -19,7 +19,9 @@ import com.taf.p2plending.wallet.WalletRepository;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -103,6 +105,54 @@ public class LoanService {
     @Transactional(readOnly = true)
     public LoanResponse getLoan(Long id) {
         return LoanResponse.from(requireLoan(id));
+    }
+
+    @Transactional
+    public LoanResponse cancelLoan(Long loanId) {
+        Loan loan = loans.findByIdForUpdate(loanId)
+                .orElseThrow(() -> new NotFoundException("loan " + loanId));
+        if (loan.getStatus() != LoanStatus.PENDING) {
+            throw new IllegalLoanStateException("loan " + loanId + " is not PENDING");
+        }
+        refundAndCancel(loan);
+        return LoanResponse.from(loan);
+    }
+
+    @Transactional
+    public void expireLoan(Long loanId) {
+        Loan loan = loans.findByIdForUpdate(loanId)
+                .orElseThrow(() -> new NotFoundException("loan " + loanId));
+        if (loan.getStatus() != LoanStatus.PENDING
+                || loan.getFundingDeadline().isAfter(OffsetDateTime.now())) {
+            return;
+        }
+        refundAndCancel(loan);
+    }
+
+    private void refundAndCancel(Loan loan) {
+        Map<Long, BigDecimal> byInvestor = new LinkedHashMap<>();
+        for (LoanInvestment investment : investments.findByLoanId(loan.getId())) {
+            byInvestor.merge(investment.getInvestorId(), investment.getAmount(), BigDecimal::add);
+        }
+
+        Wallet escrow = escrowWallet();
+        Map<Long, Wallet> investorWallets = new LinkedHashMap<>();
+        List<Long> walletsToLock = new ArrayList<>();
+        walletsToLock.add(escrow.getId());
+        for (Long investorId : byInvestor.keySet()) {
+            Wallet wallet = wallets.findByUserId(investorId)
+                    .orElseThrow(() -> new NotFoundException("wallet for user " + investorId));
+            investorWallets.put(investorId, wallet);
+            walletsToLock.add(wallet.getId());
+        }
+        ledger.lockWallets(walletsToLock);
+
+        UUID correlationId = UUID.randomUUID();
+        for (Map.Entry<Long, BigDecimal> entry : byInvestor.entrySet()) {
+            ledger.transfer(escrow.getId(), investorWallets.get(entry.getKey()).getId(),
+                    entry.getValue(), LedgerEntryType.FUNDING_REFUND, loan.getId(), correlationId);
+        }
+        loan.setStatus(LoanStatus.CANCELLED);
     }
 
     private void disburse(Loan loan, Wallet escrow, Wallet borrowerWallet, UUID correlationId) {
