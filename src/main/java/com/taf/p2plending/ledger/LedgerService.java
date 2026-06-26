@@ -46,8 +46,9 @@ public class LedgerService {
         }
     }
 
-    private LedgerEntry post(Long walletId, BigDecimal signedAmount, LedgerEntryType type,
-                             Long loanId, UUID correlationId) {
+    @Transactional
+    public LedgerEntry post(Long walletId, BigDecimal signedAmount, LedgerEntryType type,
+                            Long loanId, UUID correlationId) {
         BigDecimal delta = Money.scale2(signedAmount);
         if (delta.signum() == 0) {
             throw new IllegalArgumentException("Ledger movement amount cannot be zero");
