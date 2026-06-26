@@ -10,7 +10,7 @@ Built with Java 21 & Spring Boot.
 - Flyway (migrations), Testcontainers (integration tests)
 
 ## Prerequisites
-- **Java 21** must be your active JDK — check with `java -version` (should print `21.x`)
+- **Java 21** must be your active JDK (check with `java -version`, it should print `21.x`)
 - A container runtime for PostgreSQL: **Docker Desktop** or **Colima**
 
 ## Run the project
@@ -25,7 +25,7 @@ docker compose up -d
 # 3. Make the Maven wrapper executable (first time only)
 chmod +x mvnw
 
-# 4. Start the API — Flyway creates the schema on boot
+# 4. Start the API (Flyway creates the schema on boot)
 ./mvnw spring-boot:run
 ```
 The API runs on **http://localhost:8080**.
@@ -38,12 +38,12 @@ The API runs on **http://localhost:8080**.
 ```bash
 ./mvnw verify
 ```
-Tests use Testcontainers — a throwaway PostgreSQL starts automatically, no manual setup.
-They cover the full loan lifecycle (create → fund by multiple investors → repay → fully repaid),
+Tests use Testcontainers: a throwaway PostgreSQL starts automatically, no manual setup.
+They cover the full loan lifecycle (create, fund by multiple investors, repay, fully repaid),
 funding concurrency (no over-funding under parallel requests), repayment atomicity (a failure
 rolls back every wallet update), the financial math, and the HTTP status codes.
 
-> **Colima users only** — Testcontainers needs `DOCKER_HOST` to find the daemon
+> **Colima users only**: Testcontainers needs `DOCKER_HOST` to find the daemon
 > (not needed on Docker Desktop):
 > ```bash
 > export DOCKER_HOST="unix://${HOME}/.colima/default/docker.sock"
@@ -63,7 +63,7 @@ rolls back every wallet update), the financial math, and the HTTP status codes.
 | POST | `/api/loans/{id}/fund` | Fund a `PENDING` loan; auto-disburses when fully funded |
 | POST | `/api/loans/{id}/repay` | Make a monthly repayment (distributes to investors) |
 
-Example — request a loan:
+Example request to create a loan:
 ```bash
 curl -X POST http://localhost:8080/api/loans \
   -H 'Content-Type: application/json' \
@@ -72,25 +72,26 @@ curl -X POST http://localhost:8080/api/loans \
 
 ## Design decisions
 
-- **Money & rounding** — all amounts use `BigDecimal`, stored as `NUMERIC(19,2)`, rounded with
+- **Money & rounding**: all amounts use `BigDecimal`, stored as `NUMERIC(19,2)`, rounded with
   `HALF_EVEN` (banker's rounding, IEEE 754). Never `double`.
-- **Interest rate** — the provided rate is a nominal annual rate; the monthly rate is `annual / 12`.
-- **Ledger & escrow** — every money movement is an append-only `ledger_entries` row. Internal
+- **Interest rate**: the provided rate is a nominal annual rate; the monthly rate is `annual / 12`.
+- **Ledger & escrow**: every money movement is an append-only `ledger_entries` row. Internal
   movements are balanced two-leg transfers, so money is never created or destroyed and balances
   are reconcilable from the ledger. Committed funds are held in a **segregated escrow account**
-  (separate from the platform account) until the loan is disbursed or refunded — aligned with
+  (separate from the platform account) until the loan is disbursed or refunded, aligned with
   client-money segregation principles (UK FCA **CASS**).
-- **Multiple fundings** — an investor can fund the same loan several times; each funding is a
+- **Multiple fundings**: an investor can fund the same loan several times; each funding is a
   separate record (fractional-notes model, as in core-banking engines like Mambu), aggregated per
   investor at distribution so each receives a single payout.
-- **Concurrency** — a pessimistic row lock on the loan during funding, plus a DB
-  `CHECK (funded_amount <= principal)`, prevents over-funding under parallel requests. Optimistic
+- **Concurrency**: a pessimistic row lock on the loan during funding, plus a DB
+  `CHECK (funded_amount <= principal)`, prevents over-funding under parallel requests. Within a
+  transaction, all wallet locks are acquired in ascending id order to avoid deadlocks. Optimistic
   locking was considered but adds retry complexity for no real gain at this scale.
-- **Repayment** — a single `@Transactional` method, all-or-nothing. Payment = principal + interest;
+- **Repayment**: a single `@Transactional` method, all-or-nothing. Payment = principal + interest;
   the platform takes a **1% fee on the interest portion**; the remainder is distributed pro-rata to
   investors with a **largest-remainder** rule so the parts always sum exactly to the distributable
   amount.
-- **Funding window** — loans have a **14-day** funding deadline (configurable via
+- **Funding window**: loans have a **14-day** funding deadline (configurable via
   `p2p.funding.window-days`); funding after the deadline is rejected. *Automatic expiry-and-refund
   and a borrower cancel endpoint are designed around the escrow refund path but are not part of this
   submission.*
@@ -99,12 +100,12 @@ curl -X POST http://localhost:8080/api/loans \
 
 Normalized, ledger-style schema (DDL: `src/main/resources/db/migration/V1__init.sql`):
 
-- **users** — `system_role` discriminates the platform and escrow system accounts.
-- **wallets** — one per user; `balance` with `CHECK (balance >= 0)`.
-- **loans** — borrower, principal, annual rate, term, status, funded amount, funding deadline,
+- **users**: `system_role` discriminates the platform and escrow system accounts.
+- **wallets**: one per user; `balance` with `CHECK (balance >= 0)`.
+- **loans**: borrower, principal, annual rate, term, status, funded amount, funding deadline,
   monthly payment, remaining principal.
-- **loan_investments** — many-to-many between loans and investors; one row per funding event.
-- **ledger_entries** — append-only journal: wallet, type, signed amount, `balance_after`,
+- **loan_investments**: many-to-many between loans and investors; one row per funding event.
+- **ledger_entries**: append-only journal: wallet, type, signed amount, `balance_after`,
   `correlation_id` (groups the rows of one operation).
 
 ## Error responses
@@ -122,7 +123,7 @@ Errors return a consistent JSON body: `{ "timestamp", "status", "error", "messag
 
 ## References
 
-Design choices are grounded in: UK FCA **CASS** (client-money segregation → escrow); **IEEE 754**
-banker's rounding and **double-entry bookkeeping** (precision & ledger integrity); and market
-practice — **Prosper** (14-day funding window), **LendingClub** (cancel before disbursement only),
+Design choices are grounded in: UK FCA **CASS** (client-money segregation, escrow); **IEEE 754**
+banker's rounding and **double-entry bookkeeping** (precision and ledger integrity); and market
+practice: **Prosper** (14-day funding window), **LendingClub** (cancel before disbursement only),
 **Mambu** (per-funding records).
