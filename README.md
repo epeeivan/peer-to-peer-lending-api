@@ -131,3 +131,28 @@ Design choices are grounded in: UK FCA **CASS** (client-money segregation, escro
 banker's rounding and **double-entry bookkeeping** (precision and ledger integrity); and market
 practice: **Prosper** (14-day funding window), **LendingClub** (cancel before disbursement only),
 **Mambu** (per-funding records).
+
+## Security
+
+This project is scoped to the test's **"User Management (Simplified)"** requirement, so the API
+has **no authentication or authorization layer**: any caller can reach any endpoint. Adding auth
+was a deliberate non-goal here, since it would contradict the simplified scope and add friction to
+running and evaluating the project. The items below are what a production deployment would require:
+
+- **Authentication & authorization** (Spring Security with JWT/OAuth2), enforcing that a user can
+  only act on **their own** wallet and loans. This closes the IDOR risk on `/api/users/{id}/...`.
+- **TLS (HTTPS)** in front of the API.
+- **Secrets management**: the database credentials in `application.yml` and `docker-compose.yml`
+  are for local development only; production would use environment variables or a secrets manager.
+- **Rate limiting** to mitigate brute-force and denial-of-service.
+- **Actor auditing**: the ledger records every movement; production would also record the
+  authenticated principal behind each entry.
+- **Amount bounds** and **generic error messages** to avoid information disclosure.
+
+Already handled at the code and data level:
+
+- Parameterized queries via JPA / Spring Data (no SQL injection).
+- DTOs only in responses (no entity exposure or mass assignment).
+- Request-body validation.
+- Financial integrity: `BigDecimal`, pessimistic locking, database `CHECK` constraints, and atomic
+  transactions.
