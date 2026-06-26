@@ -1,0 +1,116 @@
+package com.taf.p2plending.loan;
+
+import com.taf.p2plending.common.exception.IllegalLoanStateException;
+import com.taf.p2plending.common.exception.NotFoundException;
+import com.taf.p2plending.common.exception.OverFundingException;
+import com.taf.p2plending.config.FundingProperties;
+import com.taf.p2plending.finance.Money;
+import com.taf.p2plending.finance.MoneyMath;
+import com.taf.p2plending.ledger.LedgerEntryType;
+import com.taf.p2plending.ledger.LedgerService;
+import com.taf.p2plending.loan.dto.FundLoanRequest;
+import com.taf.p2plending.loan.dto.LoanResponse;
+import com.taf.p2plending.loan.dto.RequestLoanRequest;
+import com.taf.p2plending.user.SystemRole;
+import com.taf.p2plending.user.User;
+import com.taf.p2plending.user.UserRepository;
+import com.taf.p2plending.wallet.Wallet;
+import com.taf.p2plending.wallet.WalletRepository;
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import java.util.UUID;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class LoanService {
+
+    private final LoanRepository loans;
+    private final UserRepository users;
+    private final WalletRepository wallets;
+    private final LoanInvestmentRepository investments;
+    private final LedgerService ledger;
+    private final FundingProperties fundingProperties;
+
+    public LoanService(LoanRepository loans, UserRepository users, WalletRepository wallets,
+                       LoanInvestmentRepository investments, LedgerService ledger,
+                       FundingProperties fundingProperties) {
+        this.loans = loans;
+        this.users = users;
+        this.wallets = wallets;
+        this.investments = investments;
+        this.ledger = ledger;
+        this.fundingProperties = fundingProperties;
+    }
+
+    @Transactional
+    public LoanResponse requestLoan(RequestLoanRequest request) {
+        if (!users.existsById(request.borrowerId())) {
+            throw new NotFoundException("user " + request.borrowerId());
+        }
+        OffsetDateTime deadline = OffsetDateTime.now().plusDays(fundingProperties.windowDays());
+        Loan loan = loans.save(new Loan(request.borrowerId(), request.principal(),
+                request.annualInterestRate(), request.termMonths(), deadline));
+        return LoanResponse.from(loan);
+    }
+
+    @Transactional
+    public LoanResponse fundLoan(Long loanId, FundLoanRequest request) {
+        Loan loan = loans.findByIdForUpdate(loanId)
+                .orElseThrow(() -> new NotFoundException("loan " + loanId));
+        if (loan.getStatus() != LoanStatus.PENDING) {
+            throw new IllegalLoanStateException("loan " + loanId + " is not PENDING");
+        }
+        if (!loan.getFundingDeadline().isAfter(OffsetDateTime.now())) {
+            throw new IllegalLoanStateException("funding window for loan " + loanId + " has expired");
+        }
+        BigDecimal amount = Money.scale2(request.amount());
+        BigDecimal remaining = loan.getPrincipal().subtract(loan.getFundedAmount());
+        if (amount.compareTo(remaining) > 0) {
+            throw new OverFundingException(loanId);
+        }
+
+        Wallet investorWallet = wallets.findByUserId(request.investorId())
+                .orElseThrow(() -> new NotFoundException("wallet for user " + request.investorId()));
+        Wallet escrow = escrowWallet();
+        UUID correlationId = UUID.randomUUID();
+
+        ledger.transfer(investorWallet.getId(), escrow.getId(), amount,
+                LedgerEntryType.LOAN_FUNDING, loanId, correlationId);
+        investments.save(new LoanInvestment(loanId, request.investorId(), amount));
+        loan.setFundedAmount(Money.scale2(loan.getFundedAmount().add(amount)));
+
+        if (loan.getFundedAmount().compareTo(loan.getPrincipal()) == 0) {
+            disburse(loan, escrow, correlationId);
+        }
+        return LoanResponse.from(loan);
+    }
+
+    @Transactional(readOnly = true)
+    public LoanResponse getLoan(Long id) {
+        return LoanResponse.from(requireLoan(id));
+    }
+
+    private void disburse(Loan loan, Wallet escrow, UUID correlationId) {
+        loan.setMonthlyPayment(MoneyMath.monthlyPayment(loan.getPrincipal(),
+                loan.getAnnualInterestRate(), loan.getTermMonths()));
+        loan.setRemainingPrincipal(loan.getPrincipal());
+        Wallet borrowerWallet = wallets.findByUserId(loan.getBorrowerId())
+                .orElseThrow(() -> new NotFoundException("wallet for user " + loan.getBorrowerId()));
+        ledger.transfer(escrow.getId(), borrowerWallet.getId(), loan.getPrincipal(),
+                LedgerEntryType.LOAN_DISBURSEMENT, loan.getId(), correlationId);
+        loan.setStatus(LoanStatus.FUNDED);
+        loan.setFundedAt(OffsetDateTime.now());
+    }
+
+    private Wallet escrowWallet() {
+        User escrow = users.findBySystemRole(SystemRole.ESCROW)
+                .orElseThrow(() -> new NotFoundException("escrow account"));
+        return wallets.findByUserId(escrow.getId())
+                .orElseThrow(() -> new NotFoundException("escrow wallet"));
+    }
+
+    private Loan requireLoan(Long id) {
+        return loans.findById(id).orElseThrow(() -> new NotFoundException("loan " + id));
+    }
+}

@@ -19,6 +19,11 @@ spring:
 server:
   port: 8080
 
+p2p:
+  funding:
+    window-days: 14
+    expiry-check-cron: "0 0 * * * *"
+
 logging:
   level:
     org.hibernate.SQL: debug
