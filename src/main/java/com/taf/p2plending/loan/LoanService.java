@@ -68,6 +68,9 @@ public class LoanService {
         if (!loan.getFundingDeadline().isAfter(OffsetDateTime.now())) {
             throw new IllegalLoanStateException("funding window for loan " + loanId + " has expired");
         }
+        if (request.investorId().equals(loan.getBorrowerId())) {
+            throw new IllegalLoanStateException("a borrower cannot fund their own loan");
+        }
         BigDecimal amount = Money.scale2(request.amount());
         BigDecimal remaining = loan.getPrincipal().subtract(loan.getFundedAmount());
         if (amount.compareTo(remaining) > 0) {

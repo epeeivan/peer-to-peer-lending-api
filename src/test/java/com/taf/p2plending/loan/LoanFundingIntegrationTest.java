@@ -3,6 +3,7 @@ package com.taf.p2plending.loan;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.taf.p2plending.common.exception.IllegalLoanStateException;
 import com.taf.p2plending.common.exception.OverFundingException;
 import com.taf.p2plending.loan.dto.FundLoanRequest;
 import com.taf.p2plending.loan.dto.LoanResponse;
@@ -71,6 +72,18 @@ class LoanFundingIntegrationTest extends AbstractIntegrationTest {
                 .isInstanceOf(OverFundingException.class);
 
         assertThat(loanService.getLoan(loanId).fundedAmount()).isEqualByComparingTo("600.00");
+    }
+
+    @Test
+    void a_borrower_cannot_fund_their_own_loan() {
+        Long borrower = userService.createUser(new CreateUserRequest("B", "self.fund@example.com")).id();
+        walletService.deposit(borrower, new BigDecimal("1000.00"));
+        Long loanId = loanService.requestLoan(new RequestLoanRequest(borrower,
+                new BigDecimal("1000.00"), new BigDecimal("0.12"), 12)).id();
+
+        assertThatThrownBy(() ->
+                loanService.fundLoan(loanId, new FundLoanRequest(borrower, new BigDecimal("500.00"))))
+                .isInstanceOf(IllegalLoanStateException.class);
     }
 
     private Long investorWithFunds(String email, String funds) {
