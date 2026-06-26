@@ -6,6 +6,7 @@ import com.taf.p2plending.finance.Money;
 import com.taf.p2plending.wallet.Wallet;
 import com.taf.p2plending.wallet.WalletRepository;
 import java.math.BigDecimal;
+import java.util.Collection;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,6 +45,13 @@ public class LedgerService {
             post(toWalletId, amount, type, loanId, correlationId);
             post(fromWalletId, amount.negate(), type, loanId, correlationId);
         }
+    }
+
+    @Transactional
+    public void lockWallets(Collection<Long> walletIds) {
+        walletIds.stream().distinct().sorted().forEach(id ->
+                wallets.findByIdForUpdate(id)
+                        .orElseThrow(() -> new NotFoundException("wallet " + id)));
     }
 
     @Transactional
