@@ -84,6 +84,8 @@ curl -X POST http://localhost:8080/api/loans \
 - **Multiple fundings**: an investor can fund the same loan several times; each funding is a
   separate record (fractional-notes model, as in core-banking engines like Mambu), aggregated per
   investor at distribution so each receives a single payout.
+- **Conflict of interest**: a borrower cannot fund their own loan (rejected with `409`), in line
+  with P2P/crowdfunding conflict-of-interest rules (EU ECSPR, UK FCA).
 - **Concurrency**: a pessimistic row lock on the loan during funding, plus a DB
   `CHECK (funded_amount <= principal)`, prevents over-funding under parallel requests. Within a
   transaction, all wallet locks are acquired in ascending id order to avoid deadlocks. Optimistic
@@ -119,6 +121,7 @@ Errors return a consistent JSON body: `{ "timestamp", "status", "error", "messag
 | Insufficient wallet funds | 409 |
 | Funding would exceed the principal | 409 |
 | Action on a loan in the wrong status | 409 |
+| Borrower funding their own loan | 409 |
 | Duplicate email | 409 |
 | Invalid request body | 400 |
 
