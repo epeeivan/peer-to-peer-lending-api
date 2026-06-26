@@ -18,6 +18,8 @@ import com.taf.p2plending.wallet.Wallet;
 import com.taf.p2plending.wallet.WalletRepository;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -73,15 +75,27 @@ public class LoanService {
         Wallet investorWallet = wallets.findByUserId(request.investorId())
                 .orElseThrow(() -> new NotFoundException("wallet for user " + request.investorId()));
         Wallet escrow = escrowWallet();
-        UUID correlationId = UUID.randomUUID();
+        boolean willDisburse = Money.scale2(loan.getFundedAmount().add(amount))
+                .compareTo(loan.getPrincipal()) == 0;
+        Wallet borrowerWallet = willDisburse
+                ? wallets.findByUserId(loan.getBorrowerId())
+                        .orElseThrow(() -> new NotFoundException("wallet for user " + loan.getBorrowerId()))
+                : null;
 
+        List<Long> walletsToLock = new ArrayList<>(List.of(investorWallet.getId(), escrow.getId()));
+        if (borrowerWallet != null) {
+            walletsToLock.add(borrowerWallet.getId());
+        }
+        ledger.lockWallets(walletsToLock);
+
+        UUID correlationId = UUID.randomUUID();
         ledger.transfer(investorWallet.getId(), escrow.getId(), amount,
                 LedgerEntryType.LOAN_FUNDING, loanId, correlationId);
         investments.save(new LoanInvestment(loanId, request.investorId(), amount));
         loan.setFundedAmount(Money.scale2(loan.getFundedAmount().add(amount)));
 
-        if (loan.getFundedAmount().compareTo(loan.getPrincipal()) == 0) {
-            disburse(loan, escrow, correlationId);
+        if (borrowerWallet != null) {
+            disburse(loan, escrow, borrowerWallet, correlationId);
         }
         return LoanResponse.from(loan);
     }
@@ -91,12 +105,10 @@ public class LoanService {
         return LoanResponse.from(requireLoan(id));
     }
 
-    private void disburse(Loan loan, Wallet escrow, UUID correlationId) {
+    private void disburse(Loan loan, Wallet escrow, Wallet borrowerWallet, UUID correlationId) {
         loan.setMonthlyPayment(MoneyMath.monthlyPayment(loan.getPrincipal(),
                 loan.getAnnualInterestRate(), loan.getTermMonths()));
         loan.setRemainingPrincipal(loan.getPrincipal());
-        Wallet borrowerWallet = wallets.findByUserId(loan.getBorrowerId())
-                .orElseThrow(() -> new NotFoundException("wallet for user " + loan.getBorrowerId()));
         ledger.transfer(escrow.getId(), borrowerWallet.getId(), loan.getPrincipal(),
                 LedgerEntryType.LOAN_DISBURSEMENT, loan.getId(), correlationId);
         loan.setStatus(LoanStatus.FUNDED);
